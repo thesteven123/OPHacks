@@ -1,6 +1,8 @@
-// Offline page loads (F2): network-first for pages and assets, falling back to the cache. API calls are never cached.
-const CACHE = 'tapcheck-v1';
-const SHELL = ['/', '/map.html', '/dashboard.html', '/style.css', '/queue.js'];
+// Offline page loads: network-first for same-origin pages and assets, falling back to the cache.
+// API calls, moderator pages, auth and React Server Component payloads are never cached.
+const CACHE = 'tapcheck-v2';
+const SHELL = ['/report', '/map', '/dashboard'];
+const NEVER_CACHE = ['/api/', '/mod', '/login'];
 
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 
@@ -10,7 +12,8 @@ self.addEventListener('activate', (e) =>
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  const cacheable = e.request.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/photos/') && url.pathname !== '/mod.html';
+  const cacheable = e.request.method === 'GET' && url.origin === self.location.origin && !url.searchParams.has('_rsc')
+    && !e.request.headers.has('RSC') && !NEVER_CACHE.some((p) => url.pathname.startsWith(p));
   if (!cacheable) return;
   e.respondWith(
     fetch(e.request)
@@ -18,6 +21,6 @@ self.addEventListener('fetch', (e) => {
         if (res.ok) caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
         return res;
       })
-      .catch(() => caches.match(e.request, { ignoreSearch: true })),
+      .catch(() => caches.match(e.request)),
   );
 });
