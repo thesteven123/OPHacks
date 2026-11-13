@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IssueType {
+  discoloration
+  odor
+  outage
+  broken_infrastructure
+  sanitation_gap
+  other
+}
+
+enum Status {
+  open
+  verified
+  forwarded
+  rejected
+  resolved
+}
+
+enum Duration {
+  today
+  few_days
+  week_plus
+}
+
+enum WaterUsable {
+  yes
+  no
+  unsure
+}
+
+model Report {
+  id              String         @id @db.Uuid
+  created_at      DateTime       @default(now())
+  issue_type      IssueType
+  description     String         @default("")
+  severity        Int
+  duration        Duration
+  water_usable    WaterUsable
+  contact_email   String         @default("")
+  photo_public_id String?
+  precise_lat     Float
+  precise_lng     Float
+  public_lat      Float
+  public_lng      Float
+  status          Status         @default(open)
+  moderator_note  String         @default("")
+  submitter_hash  String
+  history         StatusChange[]
+
+  @@index([submitter_hash, created_at])
+  @@index([status, created_at])
+  @@map("reports")
+}
+
+model StatusChange {
+  id         Int      @id @default(autoincrement())
+  report_id  String   @db.Uuid
+  report     Report   @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  status     Status
+  note       String   @default("")
+  changed_at DateTime @default(now())
+
+  @@index([report_id])
+  @@map("status_history")
+}
+
+model Moderator {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  password_hash String
+  created_at    DateTime @default(now())
+
+  @@map("moderators")
+}
