@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TapCheck: status</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header><strong>TapCheck</strong><a href="/">Report</a><a href="/map.html">Map</a><a href="/dashboard.html">Status</a></header>
+  <main>
+    <h1>Report status</h1>
+    <div class="kpis">
+      <div><span id="total">–</span>Total reports</div>
+      <div><span id="open">–</span>Open</div>
+      <div><span id="inprogress">–</span>Verified or forwarded</div>
+      <div><span id="resolved">–</span>Resolved</div>
+    </div>
+    <p id="updated" class="small"></p>
+    <p class="disclaimer">This is not a substitute for official water testing.</p>
+  </main>
+  <script>
+    fetch('/api/stats').then((r) => r.json()).then((s) => {
+      for (const k of ['total', 'open', 'resolved']) document.getElementById(k).textContent = s[k];
+      document.getElementById('inprogress').textContent = s.verified + s.forwarded;
+      document.getElementById('updated').textContent = s.last_updated ? `Last updated ${new Date(s.last_updated).toLocaleString()}` : 'No reports yet.';
+    }).catch(() => { document.getElementById('updated').textContent = 'Could not load status. Check your connection.'; });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+  </script>
+</body>
+</html>

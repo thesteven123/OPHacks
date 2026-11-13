@@ -1,12 +1,16 @@
 # TapCheck MVP draft: build notes
 
-Owner: Executive Coder. This is a first runnable draft of F1–F7 for design and security review. It is not production-ready.
+Owner: Executive Coder. A runnable build of every feature in `docs/MVP.md`, for design, security and change review. Not production-ready.
+
+> **Stack note:** `docs/PLAN.md` proposes Next.js + Express + Postgres/Prisma + Cloudinary on Vercel + Railway. This draft does the same features with zero dependencies (Node + built-in SQLite + disk photos) so it runs with no accounts or API keys, and deploys as one process (hosting option A below). The API maps one-to-one onto the planned routes if the team decides to port it.
 
 ## Run it
 Needs Node 22.5 or later (it uses the built-in `node:sqlite`). No npm install is needed.
 
 ```bash
-MOD_TOKEN=<long-random-string> DB_FILE=tapcheck.db npm start   # http://localhost:3000
+export MOD_EMAIL=mod@example.org
+export MOD_PASSWORD_HASH="$(npm run -s hash-password -- 'choose-a-long-password')"
+DB_FILE=tapcheck.db PHOTO_DIR=photos npm start   # http://localhost:3000, moderators at /mod.html
 npm test
 ```
 
@@ -14,40 +18,49 @@ npm test
 |---|---|---|
 | `PORT` | 3000 | HTTP port |
 | `DB_FILE` | `:memory:` | SQLite file; set it so data survives restarts |
-| `MOD_TOKEN` | unset | Shared moderator token; moderator routes stay closed when it is unset |
-| `RATE_SALT` | random per boot | Salt for the hashed submitter id used by the rate limit |
-| `DAILY_LIMIT` | 5 | Reports per submitter per 24 h (F5; Security Reviewer to confirm the value) |
+| `PHOTO_DIR` | temp folder | Where stripped photos are stored; set it so photos survive restarts |
+| `MOD_EMAIL`, `MOD_PASSWORD_HASH` | unset | Shared moderator login (scrypt hash from `npm run hash-password`); login is disabled when unset |
+| `RATE_SALT` | random per boot | Salt for the hashed IP + User-Agent used by the rate limit |
+| `DAILY_LIMIT` | 5 | Reports per device per 24 h (Security Reviewer's value) |
 
 ## Layout
 ```
-api/db.js           schema, issue types, statuses, coarse-location rounding (0.002° ≈ 200 m)
+api/db.js           schema, enums, coarse-location rounding (0.001° ≈ 110 m)
+api/auth.js         scrypt password hashing + `npm run hash-password`
+api/photo.js        JPEG metadata stripping (removes EXIF/GPS, XMP, IPTC, comments)
 api/server.js       HTTP API + static file server (no dependencies)
 api/server.test.js  node:test behavior tests
-app/index.html      F1 report form + F7 disclaimer
-app/queue.js        F2 offline queue (localStorage, client UUID makes retries idempotent)
-app/map.html        F3 public map (Leaflet + OpenStreetMap tiles) + F6 export links
-app/mod.html        F4 moderation queue
+app/index.html      report form: 3 quick questions, GPS or pin drop, photo, private email, disclaimer
+app/queue.js        offline queue (localStorage, client UUID makes retries idempotent; drops the photo if storage is full)
+app/sw.js           service worker: app pages load offline; API and photos are never cached
+app/map.html        public map: clustered markers, type and age filters (default 7 days), photo thumbnails, export links
+app/dashboard.html  public status: total, open, in progress, resolved, last updated
+app/mod.html        moderator login + triage queue (sort, verify / forward / resolve / spam, internal note)
 ```
 
 ## API
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| POST | `/api/reports` | none | `{id (uuid), issue_type, description?, lat, lng}`; 201 new, 200 duplicate, 429 over limit |
-| GET | `/api/reports` | none | Non-rejected reports with coarse location only |
-| GET | `/api/export.csv`, `/api/export.geojson` | none | Same public fields as the map (F6) |
-| GET | `/api/mod/reports` | Bearer `MOD_TOKEN` | All reports including precise location |
-| PATCH | `/api/mod/reports/:id` | Bearer `MOD_TOKEN` | `{status, note}`; every change is written to `status_history` |
+| POST | `/api/reports` | none | `{id (uuid), issue_type, severity 1-3, duration, water_usable, lat, lng, description?, contact_email?, photo? (JPEG data URL)}`; 201 new with `remaining`, 200 duplicate, 429 over limit |
+| GET | `/api/reports` | none | Non-rejected reports; coarse location only; no email, note or exact GPS |
+| GET | `/api/stats` | none | Counts by status + last update |
+| GET | `/api/export.csv`, `/api/export.geojson` | none | Same public fields as the map |
+| GET | `/photos/:id.jpg` | none (moderator for rejected) | Stripped photo |
+| POST | `/api/mod/login` | none | `{email, password}` → session token (8 h); 5 failed tries per 15 min per IP, then 429 |
+| GET | `/api/mod/reports` | Bearer session | All reports including exact GPS and contact email |
+| PATCH | `/api/mod/reports/:id` | Bearer session | `{status, note}`; every change is written to `status_history` |
 
-## MVP coverage
-| Feature | State in this draft |
+## MVP coverage (docs/MVP.md)
+| Feature | State |
 |---|---|
-| F1 Report form | Done, but **no photo upload yet**: EXIF stripping needs an image library or object storage; planned next |
-| F2 Offline queue | Done with localStorage; a service worker for offline page loads is still to do |
-| F3 Public map | Done: color by status, filter by type and age, coarse location |
-| F4 Moderation | Done with one shared token; per-moderator accounts are needed before the pilot |
-| F5 Rate limit | Done: salted IP hash, rejected reports hidden. IP-based limits are weak behind shared NAT |
-| F6 Export | Done: CSV (formula-safe) and GeoJSON, no precise coordinates |
-| F7 Disclaimer | On the form and map popups |
+| 1. Report form | Done: issue type, severity, duration, usable?, GPS or pin drop, photo resized in the browser to ≤1280 px JPEG and stripped again on the server, optional private email, disclaimer, soft warning at the 4th report |
+| 1. Offline | Done: queue in localStorage + service worker for page loads |
+| 2. Public map | Done: clusters, status colors, type/age filters, thumbnail popups, ~100 m coarse location |
+| 3. Moderator triage | Done: shared email + password login (scrypt, not bcrypt, to stay dependency-free), sort, actions, internal note, exact GPS moderator-only |
+| 4. Export | Done: CSV (formula-safe, numbers untouched) and GeoJSON |
+| 5. Status dashboard | Done |
+
+Known gaps: sessions live in memory (a restart logs moderators out); no neighborhood picker (pin drop instead); no per-moderator accounts; offline reports in localStorage are not signed (Security Reviewer's medium risk); Lighthouse score not measured yet.
 
 ## Hosting options (answer to PLAN.md open question 2)
 Prices checked on 2026-11-12 at fly.io/docs/about/pricing, supabase.com/pricing and vercel.com/pricing.
@@ -67,7 +80,7 @@ Photos are small at pilot scale: 30 reports × ~300 KB ≈ 10 MB.
 Recommendation: A for the hackathon demo and first pilot; move to B when a second community or more than a few moderators join.
 
 ## Next build steps
-1. Photo upload with metadata stripping (F1).
-2. Service worker for offline page loads (F2).
-3. Moderator accounts with hashed passwords instead of a shared token (F4).
-4. Apply the Handoff Spec Writer's design tokens once Phase 1 is signed off.
+1. Design Critic / Handoff Spec Writer fixes once wireframes exist.
+2. Lighthouse mobile audit (target ≥ 80).
+3. Deploy to Fly.io (option A) with `DB_FILE` and `PHOTO_DIR` on a volume.
+4. Per-moderator accounts and persistent sessions before the pilot.

@@ -7,44 +7,86 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header><strong>TapCheck moderation</strong><a href="/map.html">Map</a></header>
-  <main>
-    <form id="login"><label for="token">Moderator token</label><input id="token" type="password" required><button>Load queue</button></form>
+  <header><strong>TapCheck moderation</strong><a href="/map.html">Map</a><a href="/dashboard.html">Status</a><button id="logout" class="link" hidden>Log out</button></header>
+  <main class="wide">
+    <form id="login">
+      <label for="email">Email</label><input id="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required>
+      <button>Log in</button>
+    </form>
     <p class="status" id="status" role="status"></p>
+    <div id="controls" hidden>
+      <label for="sort" class="inline">Sort by</label>
+      <select id="sort"><option value="created_at">Newest</option><option value="issue_type">Type</option><option value="status">Status</option><option value="severity">Severity</option></select>
+    </div>
     <div id="queue"></div>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
+    const ACTIONS = [['open', 'Open'], ['verified', 'Verify'], ['forwarded', 'Forward to utility'], ['resolved', 'Resolve'], ['rejected', 'Spam / remove']];
+    const LABELS = { 1: 'Minor', 2: 'Moderate', 3: 'Severe' };
     const token = () => sessionStorage.getItem('tapcheck-mod') || '';
     const api = (path, opts = {}) => fetch(path, { ...opts, headers: { authorization: `Bearer ${token()}`, ...opts.headers } });
+    let reports = [];
 
     function card(r) {
       const el = document.createElement('div');
-      el.className = 'card';
-      el.innerHTML = `<b></b> <span></span><p></p><small></small>
-        <div class="row"><select>${['open', 'verified', 'forwarded', 'rejected', 'resolved'].map((s) => `<option>${s}</option>`).join('')}</select>
-        <input placeholder="Note"><button>Save</button></div>`;
-      el.querySelector('b').textContent = r.issue_type;
-      el.querySelector('span').textContent = `(${r.status})`;
-      el.querySelector('p').textContent = r.description || 'No details.';
-      el.querySelector('small').textContent = `${new Date(r.created_at).toLocaleString()} · ${r.precise_lat.toFixed(5)}, ${r.precise_lng.toFixed(5)}`;
+      el.className = `card status-${r.status}`;
+      el.innerHTML = `<div><b class="type"></b> <span class="meta"></span></div><p class="desc"></p><p class="small facts"></p>
+        <img class="thumb" alt="Reported photo" hidden>
+        <div class="row"><select aria-label="Status">${ACTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+        <input placeholder="Internal note (moderators only)" aria-label="Internal note"><button>Save</button></div>`;
+      el.querySelector('.type').textContent = r.issue_type.replace('_', ' ');
+      el.querySelector('.meta').textContent = `· ${r.status} · ${LABELS[r.severity]} · ${new Date(r.created_at).toLocaleString()}`;
+      el.querySelector('.desc').textContent = r.description || 'No details.';
+      el.querySelector('.facts').textContent =
+        `Lasted: ${r.duration.replace('_', ' ')} · Usable: ${r.water_usable} · GPS ${r.precise_lat.toFixed(5)}, ${r.precise_lng.toFixed(5)}${r.contact_email ? ` · Contact: ${r.contact_email}` : ''}`;
+      if (r.has_photo) {
+        api(`/photos/${r.id}.jpg`).then((res) => res.ok && res.blob()).then((b) => b && Object.assign(el.querySelector('.thumb'), { src: URL.createObjectURL(b), hidden: false }));
+      }
       el.querySelector('select').value = r.status;
       el.querySelector('input').value = r.moderator_note;
       el.querySelector('button').onclick = async () => {
         const res = await api(`/api/mod/reports/${r.id}`, { method: 'PATCH', body: JSON.stringify({ status: el.querySelector('select').value, note: el.querySelector('input').value }) });
-        $('status').textContent = res.ok ? 'Saved.' : 'Save failed.';
+        $('status').textContent = res.ok ? 'Saved.' : res.status === 401 ? 'Session expired. Log in again.' : 'Save failed.';
+        if (res.status === 401) return logout();
         load();
       };
       return el;
     }
 
-    async function load() {
-      const res = await api('/api/mod/reports');
-      if (!res.ok) { $('status').textContent = 'Wrong token.'; return; }
-      $('queue').replaceChildren(...(await res.json()).map(card));
+    function render() {
+      const key = $('sort').value;
+      const sorted = [...reports].sort((a, b) => (key === 'created_at' || key === 'severity' ? String(b[key]).localeCompare(String(a[key])) : String(a[key]).localeCompare(String(b[key]))));
+      $('queue').replaceChildren(...sorted.map(card));
     }
 
-    $('login').onsubmit = (e) => { e.preventDefault(); sessionStorage.setItem('tapcheck-mod', $('token').value); load(); };
+    async function load() {
+      const res = await api('/api/mod/reports');
+      if (!res.ok) return logout();
+      reports = await res.json();
+      $('login').hidden = true; $('controls').hidden = false; $('logout').hidden = false;
+      if (!reports.length) $('status').textContent = 'No reports yet.';
+      render();
+    }
+
+    function logout() {
+      sessionStorage.removeItem('tapcheck-mod');
+      $('login').hidden = false; $('controls').hidden = true; $('logout').hidden = true;
+      $('queue').replaceChildren();
+    }
+
+    $('login').onsubmit = async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/mod/login', { method: 'POST', body: JSON.stringify({ email: $('email').value, password: $('password').value }) });
+      const body = await res.json();
+      if (!res.ok) { $('status').textContent = body.error; return; }
+      sessionStorage.setItem('tapcheck-mod', body.token);
+      $('password').value = ''; $('status').textContent = '';
+      load();
+    };
+    $('sort').onchange = render;
+    $('logout').onclick = () => { logout(); $('status').textContent = 'Logged out.'; };
     if (token()) load();
   </script>
 </body>
