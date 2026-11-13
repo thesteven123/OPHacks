@@ -107,7 +107,7 @@ Deploy steps:
 2. Run `npm run create-moderator` once from a Railway shell.
 3. Vercel: import the repo with root `web`; set `NEXT_PUBLIC_API_URL` (public Railway URL), `API_URL`, `INTERNAL_API_KEY`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`.
 
-Not verified: whether Cloudinary's Free plan allows "authenticated" delivery with signed URLs (the pricing page lists "Authentication Options" under Advanced; that may refer only to token-based auth). Check on the first real upload; if blocked, switch `type` to `upload` in `api/src/photos.js` and accept that photo URLs are public once known.
+Verified 2026-11-12 with the project's Cloudinary account: an "authenticated" upload works on its plan, the signed URL returns the photo (200) and the unsigned URL is refused (401).
 
 ## Next build steps
 1. Real Cloudinary and Railway deploy (needs the team's accounts).
