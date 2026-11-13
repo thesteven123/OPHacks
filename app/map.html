@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TapCheck: report map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header><strong>TapCheck</strong><a href="/">Report</a><a href="/map.html">Map</a><a href="/api/export.csv">CSV</a><a href="/api/export.geojson">GeoJSON</a></header>
+  <div class="filters">
+    <select id="type"><option value="">All types</option><option>discoloration</option><option>odor</option><option>outage</option><option>broken_standpipe</option><option>sanitation_gap</option><option>other</option></select>
+    <select id="age"><option value="">Any time</option><option value="1">Last 24 h</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+  </div>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const COLORS = { open: '#DC2626', verified: '#D97706', forwarded: '#2563EB', resolved: '#16A34A' };
+    const map = L.map('map').setView([37.8716, -122.2727], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    const layer = L.layerGroup().addTo(map);
+    let reports = [];
+
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    function render() {
+      const type = document.getElementById('type').value;
+      const days = Number(document.getElementById('age').value);
+      layer.clearLayers();
+      reports
+        .filter((r) => !type || r.issue_type === type)
+        .filter((r) => !days || Date.now() - new Date(r.created_at) < days * 864e5)
+        .forEach((r) =>
+          L.circleMarker([r.public_lat, r.public_lng], { radius: 9, color: COLORS[r.status], fillOpacity: 0.6 })
+            .bindPopup(`<b>${esc(r.issue_type)}</b> (${esc(r.status)})<br>${esc(r.description)}<br><small>${new Date(r.created_at).toLocaleString()}</small><br><small>Approximate location. Not an official water test.</small>`)
+            .addTo(layer),
+        );
+    }
+
+    document.getElementById('type').onchange = render;
+    document.getElementById('age').onchange = render;
+    fetch('/api/reports').then((r) => r.json()).then((data) => { reports = data; render(); });
+  </script>
+</body>
+</html>

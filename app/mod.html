@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TapCheck: moderation</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header><strong>TapCheck moderation</strong><a href="/map.html">Map</a></header>
+  <main>
+    <form id="login"><label for="token">Moderator token</label><input id="token" type="password" required><button>Load queue</button></form>
+    <p class="status" id="status" role="status"></p>
+    <div id="queue"></div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const token = () => sessionStorage.getItem('tapcheck-mod') || '';
+    const api = (path, opts = {}) => fetch(path, { ...opts, headers: { authorization: `Bearer ${token()}`, ...opts.headers } });
+
+    function card(r) {
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.innerHTML = `<b></b> <span></span><p></p><small></small>
+        <div class="row"><select>${['open', 'verified', 'forwarded', 'rejected', 'resolved'].map((s) => `<option>${s}</option>`).join('')}</select>
+        <input placeholder="Note"><button>Save</button></div>`;
+      el.querySelector('b').textContent = r.issue_type;
+      el.querySelector('span').textContent = `(${r.status})`;
+      el.querySelector('p').textContent = r.description || 'No details.';
+      el.querySelector('small').textContent = `${new Date(r.created_at).toLocaleString()} · ${r.precise_lat.toFixed(5)}, ${r.precise_lng.toFixed(5)}`;
+      el.querySelector('select').value = r.status;
+      el.querySelector('input').value = r.moderator_note;
+      el.querySelector('button').onclick = async () => {
+        const res = await api(`/api/mod/reports/${r.id}`, { method: 'PATCH', body: JSON.stringify({ status: el.querySelector('select').value, note: el.querySelector('input').value }) });
+        $('status').textContent = res.ok ? 'Saved.' : 'Save failed.';
+        load();
+      };
+      return el;
+    }
+
+    async function load() {
+      const res = await api('/api/mod/reports');
+      if (!res.ok) { $('status').textContent = 'Wrong token.'; return; }
+      $('queue').replaceChildren(...(await res.json()).map(card));
+    }
+
+    $('login').onsubmit = (e) => { e.preventDefault(); sessionStorage.setItem('tapcheck-mod', $('token').value); load(); };
+    if (token()) load();
+  </script>
+</body>
+</html>

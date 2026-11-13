@@ -1,0 +1,36 @@
+const { DatabaseSync } = require('node:sqlite');
+
+const ISSUE_TYPES = ['discoloration', 'odor', 'outage', 'broken_standpipe', 'sanitation_gap', 'other'];
+const STATUSES = ['open', 'verified', 'forwarded', 'rejected', 'resolved'];
+const GRID = 0.002;
+
+const coarse = (v) => Math.round(Math.round(v / GRID) * GRID * 1e6) / 1e6;
+
+function openDb(file = process.env.DB_FILE || ':memory:') {
+  const db = new DatabaseSync(file);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reports (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      issue_type TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      precise_lat REAL NOT NULL,
+      precise_lng REAL NOT NULL,
+      public_lat REAL NOT NULL,
+      public_lng REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      moderator_note TEXT NOT NULL DEFAULT '',
+      submitter_hash TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS status_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id TEXT NOT NULL REFERENCES reports(id),
+      status TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      changed_at TEXT NOT NULL
+    );
+  `);
+  return db;
+}
+
+module.exports = { openDb, coarse, ISSUE_TYPES, STATUSES };

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TapCheck: report a water problem</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header><strong>TapCheck</strong><a href="/">Report</a><a href="/map.html">Map</a><a href="/mod.html">Moderate</a></header>
+  <main>
+    <p class="disclaimer">Not an official water test. For emergencies, contact your local authority.</p>
+    <form id="report">
+      <label for="issue_type">What is the problem?</label>
+      <select id="issue_type" required>
+        <option value="discoloration">Discolored water</option>
+        <option value="odor">Bad smell or taste</option>
+        <option value="outage">No water</option>
+        <option value="broken_standpipe">Broken tap or standpipe</option>
+        <option value="sanitation_gap">Sanitation problem</option>
+        <option value="other">Other</option>
+      </select>
+
+      <label for="description">Details (optional, 280 characters)</label>
+      <textarea id="description" maxlength="280" rows="3"></textarea>
+
+      <label>Where?</label>
+      <button type="button" class="secondary" id="locate">Use my location</button>
+      <p id="where">No location yet.</p>
+
+      <button type="submit">Send report</button>
+    </form>
+    <p class="status" id="status" role="status"></p>
+  </main>
+  <script src="/queue.js"></script>
+  <script>
+    let coords = null;
+    const $ = (id) => document.getElementById(id);
+
+    $('locate').onclick = () =>
+      navigator.geolocation.getCurrentPosition(
+        (p) => { coords = { lat: p.coords.latitude, lng: p.coords.longitude }; $('where').textContent = 'Location captured.'; },
+        () => { $('where').textContent = 'Could not get your location. Allow location access and try again.'; },
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+
+    $('report').onsubmit = async (e) => {
+      e.preventDefault();
+      if (!coords) { $('status').textContent = 'Add your location first.'; return; }
+      TapQueue.add({ id: crypto.randomUUID(), issue_type: $('issue_type').value, description: $('description').value, ...coords });
+      const left = await TapQueue.flush();
+      $('status').textContent = left ? 'Saved on this device. It will send when you are back online.' : 'Report sent. Thank you.';
+      e.target.reset(); coords = null; $('where').textContent = 'No location yet.';
+    };
+
+    TapQueue.flush();
+  </script>
+</body>
+</html>
