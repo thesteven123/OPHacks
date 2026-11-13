@@ -67,13 +67,13 @@ export default function ReportPage() {
         return;
       }
       const { offline, limited, failed, remaining } = navigator.onLine ? await flushQueue().catch(() => ({ offline: 1 })) : { offline: 1 };
-      setStatus(
-        limited ? "You reached today's report limit. Your report is saved and will send automatically tomorrow."
-        : failed ? 'The server did not accept your report. It is still saved on this device.'
-        : offline ? `Saved on this device${saved.photoDropped ? ' without the photo (storage is full)' : ''}. It will send when you are back online.`
+      const result =
+        limited ? "Some reports reached today's limit and remain saved on this device."
+        : failed ? 'The server did not accept some reports. They remain saved on this device.'
+        : offline ? 'Some reports remain saved on this device. They will retry when you are back online.'
         : remaining === 1 ? 'Report sent. Thank you. You can send 1 more report today.'
-        : 'Report sent. Thank you.',
-      );
+        : 'Report sent. Thank you.';
+      setStatus(`${saved.photoDropped ? 'The photo could not be saved on this device. ' : ''}${result}`);
       setIssueType('discoloration'); setAnswers(initialAnswers()); setCoords(null); setWhere('No location yet.');
       setPhoto(null); setDescription(''); setEmail(''); setFileKey((k) => k + 1);
     } finally {

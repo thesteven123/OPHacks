@@ -32,6 +32,16 @@ const put = (report) => withStore('readwrite', (s) => s.put({ id: report.id, api
 
 export const queuedCount = () => withStore('readonly', (s) => s.count());
 
+export async function listQueuedReports() {
+  const entries = await withStore('readonly', (s) => s.getAll());
+  return entries.map(({ id, queued_at, report }) => ({ id, queued_at, issue_type: report.issue_type }));
+}
+
+export async function removeQueuedReport(id) {
+  await withStore('readwrite', (s) => s.delete(id));
+  notify();
+}
+
 // Lets the browser send the queue later, even if the tab is closed (Chromium only). Where Background Sync is missing
 // or disabled, the page flushes on load and on reconnect instead (see OfflineSyncBanner).
 async function requestBackgroundSync() {

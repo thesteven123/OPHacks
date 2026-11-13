@@ -63,8 +63,10 @@ function harness(kind, entries, respond) {
   vm.createContext(ctx);
   if (kind === 'page') {
     const src = read('lib/queue.js').replace(/^import .*$/m, '').replace(/^export (const|async function|function)/gm, '$1');
-    vm.runInContext(`${src}\nthis.flushQueue = flushQueue;`, ctx);
-    return { store, calls, flush: async () => JSON.parse(JSON.stringify(await ctx.flushQueue())) };
+    vm.runInContext(`${src}\nthis.flushQueue = flushQueue; this.listQueuedReports = listQueuedReports; this.removeQueuedReport = removeQueuedReport;`, ctx);
+    return { store, calls, flush: async () => JSON.parse(JSON.stringify(await ctx.flushQueue())),
+      list: async () => JSON.parse(JSON.stringify(await ctx.listQueuedReports())),
+      remove: (id) => ctx.removeQueuedReport(id) };
   }
   vm.runInContext(`${read('public/sw.js')}\nthis.flushQueue = flushQueue;`, ctx);
   return {
@@ -153,4 +155,18 @@ test('page: duplicate acknowledgement after a valid one keeps the numeric remain
   const [a, b] = ids(2);
   const h = harness('page', [entry(a), entry(b)], (id) => (id === a ? reply(201, { id, remaining: 3 }) : reply(200, { id, duplicate: true })));
   assert.deepEqual(await h.flush(), { offline: 0, limited: 0, failed: 0, sent: 2, remaining: 3 });
+});
+
+test('page: residents can review and remove one saved report without deleting others', async () => {
+  const [a, b] = ids(2);
+  const h = harness('page', [entry(a), entry(b)], () => reply(400, {}));
+  await h.flush();
+  assert.deepEqual(await h.list(), [
+    { id: a, queued_at: 1, issue_type: 'odor' },
+    { id: b, queued_at: 1, issue_type: 'odor' },
+  ]);
+  await h.remove(a);
+  assert.deepEqual([...h.store.keys()], [b]);
+  assert.equal(h.store.get(b).report.photo, 'data:image/jpeg;base64,AAAA');
+  assert.deepEqual(await h.list(), [{ id: b, queued_at: 1, issue_type: 'odor' }]);
 });

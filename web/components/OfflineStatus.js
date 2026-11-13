@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { QUEUE_EVENT, flushQueue, queuedCount } from '@/lib/queue';
+import { QUEUE_EVENT, flushQueue, listQueuedReports, queuedCount, removeQueuedReport } from '@/lib/queue';
+import { ISSUE_LABELS } from '@/lib/config';
 
 const SUCCESS_MESSAGE_MS = 5000;
 const plural = (n) => `${n} report${n === 1 ? '' : 's'}`;
@@ -28,8 +29,24 @@ export function OfflineSyncBanner() {
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(0);
+  const [reports, setReports] = useState([]);
+  const [reviewing, setReviewing] = useState(false);
 
-  const refresh = useCallback(() => queuedCount().then(setCount).catch(() => {}), []);
+  const refresh = useCallback(() => listQueuedReports().then((items) => {
+    setReports(items);
+    setCount(items.length);
+  }).catch(() => {}), []);
+
+  const removeReport = async (id) => {
+    if (!window.confirm('Remove this saved report from this device? This cannot undo a report already sent or currently sending.')) return;
+    try {
+      await removeQueuedReport(id);
+      setFailed(0);
+      setMessage('Saved report removed from this device.');
+    } catch {
+      setMessage('Could not remove the saved report. Try again.');
+    }
+  };
 
   const syncNow = useCallback(async () => {
     if (!(await queuedCount().catch(() => 0))) return;
@@ -77,10 +94,28 @@ export function OfflineSyncBanner() {
   else if (count && !message) text = syncing ? `Sending ${plural(count)}…` : `${plural(count)} waiting to send.`;
 
   return (
-    <div className={text ? `sync-banner${online ? '' : ' offline'}` : 'sr-only'} role="status" aria-live="polite">
-      <span>{text}</span>
+    <div className={text || count ? `sync-banner${online ? '' : ' offline'}` : 'sr-only'}>
+      <span role="status" aria-live="polite">{text}</span>
       {online && count > 0 && !message && (
         <button type="button" className="secondary" onClick={syncNow} disabled={syncing}>{syncing ? 'Sending…' : failed ? 'Try again' : 'Send now'}</button>
+      )}
+      {count > 0 && (
+        <button type="button" className="secondary" aria-expanded={reviewing} onClick={() => setReviewing(!reviewing)}>
+          {reviewing ? 'Hide saved reports' : 'Review saved reports'}
+        </button>
+      )}
+      {reviewing && count > 0 && (
+        <>
+          <p>Removing a saved copy cannot undo a report that has already been sent or is currently sending.</p>
+          <ul>
+            {reports.map((report) => (
+              <li key={report.id}>
+                {ISSUE_LABELS[report.issue_type] || 'Report'} · {new Date(report.queued_at).toLocaleString()} · {report.id.slice(-8)}{' '}
+                <button type="button" className="secondary" aria-label={`Remove saved report ${report.id.slice(-8)}`} onClick={() => removeReport(report.id)}>Remove saved copy</button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );
