@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { addToQueue, flushQueue } from '@/lib/queue';
 import { ISSUE_LABELS } from '@/lib/config';
@@ -34,12 +34,7 @@ export default function ReportPage() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('');
   const [fileKey, setFileKey] = useState(0);
-
-  useEffect(() => {
-    flushQueue();
-    window.addEventListener('online', flushQueue);
-    return () => window.removeEventListener('online', flushQueue);
-  }, []);
+  const [saving, setSaving] = useState(false);
 
   const pick = (lat, lng, label) => { setCoords({ lat, lng }); setWhere(label); };
   const locate = () =>
@@ -59,11 +54,13 @@ export default function ReportPage() {
   async function submit(e) {
     e.preventDefault();
     if (!coords) return setStatus('Add your location first: use your location or tap the map.');
-    const saved = addToQueue({
+    setSaving(true);
+    const saved = await addToQueue({
       id: crypto.randomUUID(), issue_type: issueType, severity: Number(answers.severity), duration: answers.duration,
       water_usable: answers.water_usable, description, contact_email: email, photo, ...coords,
     });
-    const { offline, limited, remaining } = await flushQueue();
+    const { offline, limited, remaining } = navigator.onLine ? await flushQueue() : { offline: 1 };
+    setSaving(false);
     setStatus(
       limited ? "You reached today's report limit. Your report is saved and will send automatically tomorrow."
       : offline ? `Saved on this device${saved.photoDropped ? ' without the photo (storage is full)' : ''}. It will send when you are back online.`
@@ -110,7 +107,7 @@ export default function ReportPage() {
         <label htmlFor="contact_email">Email for follow-up (optional, never shown publicly)</label>
         <input id="contact_email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
 
-        <button type="submit">Send report</button>
+        <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Send report'}</button>
       </form>
       <p className="status" role="status">{status}</p>
     </main>

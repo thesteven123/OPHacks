@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ISSUE_LABELS, PUBLIC_API_URL, STATUS_COLORS } from '@/lib/config';
+import { useOnline } from '@/components/OfflineStatus';
 
 const ReportMap = dynamic(() => import('@/components/ReportMap'), { ssr: false, loading: () => <div className="fullmap" /> });
 const DAY_MS = 864e5;
@@ -12,6 +13,7 @@ export default function MapPage() {
   const [type, setType] = useState('');
   const [days, setDays] = useState('7');
   const [error, setError] = useState('');
+  const online = useOnline();
 
   useEffect(() => {
     fetch(`${PUBLIC_API_URL}/api/reports`).then((r) => r.json()).then(setReports).catch(() => setError('Could not load reports. Check your connection.'));
@@ -39,6 +41,7 @@ export default function MapPage() {
         <span className="legend">{LEGEND.map((s) => <span key={s}><i style={{ background: STATUS_COLORS[s] }} />{s}</span>)}</span>
         <a href={`${PUBLIC_API_URL}/api/export?format=csv`}>CSV</a>
         <a href={`${PUBLIC_API_URL}/api/export?format=geojson`}>GeoJSON</a>
+        {!online && <span className="status">Viewing cached reports. Reconnect for updates.</span>}
         {error && <span className="status">{error}</span>}
       </div>
       <ReportMap reports={shown} />

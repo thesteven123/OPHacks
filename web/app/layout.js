@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import RegisterServiceWorker from '@/components/RegisterServiceWorker';
+import { OfflinePill, OfflineSyncBanner } from '@/components/OfflineStatus';
 import './globals.css';
 
 export const metadata = {
@@ -18,7 +19,9 @@ export default function RootLayout({ children }) {
           <Link href="/report">Report</Link>
           <Link href="/map">Map</Link>
           <Link href="/dashboard">Status</Link>
+          <OfflinePill />
         </header>
+        <OfflineSyncBanner />
         {children}
         <RegisterServiceWorker />
       </body>

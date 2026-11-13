@@ -21,8 +21,9 @@ web/                      Next.js 16 App Router (Vercel project, root directory 
   app/api/mod/...         session-checked proxy to the API's moderator routes
   app/api/auth/...        NextAuth
   proxy.js                redirects signed-out visitors of /mod to /login (Next 16 replacement for middleware)
-  lib/queue.js            offline queue (localStorage, client UUID makes retries idempotent)
-  public/sw.js            service worker: report/map/dashboard pages load offline
+  lib/queue.js            offline queue in IndexedDB (client UUID makes retries idempotent)
+  components/OfflineStatus.js  OfflineSyncBanner + header "Offline" pill + useOnline hook
+  public/sw.js            service worker: offline pages and assets, cached public data, background sync
 ```
 
 ## How the pieces talk
@@ -74,11 +75,19 @@ Limits: 10 report submissions per IP per minute (PLAN.md) and 5 per device (hash
 ## MVP coverage (docs/MVP.md)
 | Feature | State |
 |---|---|
-| 1. Report form + offline | Ported: all fields, browser-side resize to 1280 px JPEG, server-side metadata strip, soft warning, offline queue, service worker |
+| 1. Report form + offline | Ported: all fields, browser-side resize to 1280 px JPEG, server-side metadata strip, soft warning; offline queue, background sync and OfflineSyncBanner (see "Offline") |
 | 2. Public map | Ported: react-leaflet + markercluster, status colors, filters, popups, ~100 m coarse location |
 | 3. Moderator triage | Ported: NextAuth credentials backed by the `moderators` table (bcrypt), sort, actions, internal note, exact GPS moderator-only |
 | 4. Export | Ported: CSV and GeoJSON (one `/api/export` route with `format`, as in PLAN.md) |
 | 5. Status dashboard | Ported (server-rendered) |
+
+## Offline (MVP F2)
+- **Queue:** submitted reports are written to IndexedDB first, then sent. IndexedDB replaces the localStorage queue named in MVP.md because the service worker cannot read localStorage, and photos would overflow its ~5 MB limit. If storage is still full, the report is kept without its photo.
+- **Sending:** the page sends the queue on load, on the `online` event and from the banner's "Send now" button. Where the browser supports Background Sync (Chromium), the service worker also sends it on the `sync` event, even after the tab is closed; failures make the browser retry later. Retries reuse the report id, so the API never stores a duplicate.
+- **Caching (`public/sw.js`):** at install it caches `/report`, `/map`, `/dashboard` and every static file those pages reference; other `/_next/static` files are cached on first use. Pages are network-first with the cache as fallback; the public report list and stats from the API are cached the same way, so the map shows the last known reports offline. Moderator pages, login and all `/api/*` routes on the frontend are never cached; offline navigation to them shows a short offline page.
+- **Status UI:** an "Offline" pill in the header; `OfflineSyncBanner` (`aria-live="polite"`) shows the queue count, "Sending…", the result, and a "Send now" button; the map says "Viewing cached reports. Reconnect for updates."; moderator Save buttons are disabled offline.
+- **Service worker only runs in production builds** (`npm run build && npm start`), so `npm run dev` never serves stale files.
+- Map tiles are not cached: offline, markers show on a blank background.
 
 Deviations from the docs: Next.js **16** instead of the 14 named in MVP.md, because 14.x is out of support and `npm audit` lists unpatched critical advisories (including remote code execution) for it. JavaScript, not TypeScript, to match the draft.
 
