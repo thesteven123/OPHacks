@@ -96,18 +96,27 @@ function withStore(mode, fn) {
   });
 }
 
+// Keep in sync with acknowledgement() in web/lib/queue.js.
+async function acknowledged(res, id) {
+  if (res.status !== 201 && res.status !== 200) return false;
+  const body = await res.json().catch(() => null);
+  if (typeof body?.id !== 'string' || body.id.toLowerCase() !== id.toLowerCase()) return false;
+  return res.status === 201 || body.duplicate === true;
+}
+
 async function flushQueue() {
-  let pending = 0;
+  let pending = 0, failed = 0;
   for (const { id, apiUrl, report } of await withStore('readonly', (s) => s.getAll())) {
     try {
       const res = await fetch(`${apiUrl}/api/reports`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(report) });
       if (res.status === 429 || res.status >= 500) { pending++; continue; }
+      if (!(await acknowledged(res, id))) { pending++; failed++; continue; }
       await withStore('readwrite', (s) => s.delete(id));
     } catch {
       pending++;
     }
   }
-  for (const client of await self.clients.matchAll()) client.postMessage({ type: 'queue-synced', pending });
+  for (const client of await self.clients.matchAll()) client.postMessage({ type: 'queue-synced', pending, failed });
   // A rejected sync makes the browser retry later with backoff.
   if (pending) throw new Error(`${pending} report(s) still queued`);
 }

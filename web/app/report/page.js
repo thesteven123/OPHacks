@@ -55,20 +55,30 @@ export default function ReportPage() {
     e.preventDefault();
     if (!coords) return setStatus('Add your location first: use your location or tap the map.');
     setSaving(true);
-    const saved = await addToQueue({
-      id: crypto.randomUUID(), issue_type: issueType, severity: Number(answers.severity), duration: answers.duration,
-      water_usable: answers.water_usable, description, contact_email: email, photo, ...coords,
-    });
-    const { offline, limited, remaining } = navigator.onLine ? await flushQueue() : { offline: 1 };
-    setSaving(false);
-    setStatus(
-      limited ? "You reached today's report limit. Your report is saved and will send automatically tomorrow."
-      : offline ? `Saved on this device${saved.photoDropped ? ' without the photo (storage is full)' : ''}. It will send when you are back online.`
-      : remaining === 1 ? 'Report sent. Thank you. You can send 1 more report today.'
-      : 'Report sent. Thank you.',
-    );
-    setIssueType('discoloration'); setAnswers(initialAnswers()); setCoords(null); setWhere('No location yet.');
-    setPhoto(null); setDescription(''); setEmail(''); setFileKey((k) => k + 1);
+    try {
+      let saved;
+      try {
+        saved = await addToQueue({
+          id: crypto.randomUUID(), issue_type: issueType, severity: Number(answers.severity), duration: answers.duration,
+          water_usable: answers.water_usable, description, contact_email: email, photo, ...coords,
+        });
+      } catch {
+        setStatus('Your report could not be saved on this device. Free up storage or allow site data, then press Send report again. Your answers are still on this page.');
+        return;
+      }
+      const { offline, limited, failed, remaining } = navigator.onLine ? await flushQueue().catch(() => ({ offline: 1 })) : { offline: 1 };
+      const result =
+        limited ? "Some reports reached today's limit and remain saved on this device."
+        : failed ? 'The server did not accept some reports. They remain saved on this device.'
+        : offline ? 'Some reports remain saved on this device. They will retry when you are back online.'
+        : remaining === 1 ? 'Report sent. Thank you. You can send 1 more report today.'
+        : 'Report sent. Thank you.';
+      setStatus(`${saved.photoDropped ? 'The photo could not be saved on this device. ' : ''}${result}`);
+      setIssueType('discoloration'); setAnswers(initialAnswers()); setCoords(null); setWhere('No location yet.');
+      setPhoto(null); setDescription(''); setEmail(''); setFileKey((k) => k + 1);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
