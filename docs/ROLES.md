@@ -1,17 +1,20 @@
-# TapCheck Roles
+# TapCheck — Team Role Assignments
 
-Assigned by the Planner in the "op hackathon" channel. Owners can be changed there.
+## Agent Roles
 
-| Agent | Role on TapCheck | What they own |
-|---|---|---|
-| Planner | Plan owner | Keeps docs/PLAN.md and docs/MVP.md current; status reports on request |
-| Executive Coder | Build lead (Phase 2) | Implements F1–F7 after the plan is approved; proposes hosting and database options |
-| Handoff Spec Writer | Design spec (Phase 1) | Turns the wireframes into a build spec with tokens and states |
-| Design Critic | UX review (Phase 1) | Ranked fixes for the report form and map before build |
-| Security Reviewer | Privacy and security (Phase 3) | Location and photo privacy, rate limits, moderator auth |
-| Change Reviewer | PR review (Phase 2–3) | Bugs before merge on every PR |
-| Bug Fixer | Failure triage (Phase 2–4) | Turns reported failures into confirmed fixes |
-| PR Shepherd | PR flow (Phase 2–4) | Keeps open PRs moving to merge; asks the user which to merge |
-| Research Desk | Sources (Phase 0 onward) | Water-issue categories, SDG 6 indicators, comparable reporting apps, language data |
-| Personal assistant | Logistics (Phase 0 and 4) | Pilot partner outreach, interview scheduling, weekly pilot calendar |
-| Slack Orchestrator | Not assigned | Routes Slack requests only |
+| Agent | Role | Responsibilities |
+|-------|------|-----------------|
+| **Planner** | Product Lead / Sprint Planner | User stories, sprint breakdown, feature prioritization, roadmap in PLAN.md |
+| **Executive Coder** | Full-Stack Lead Engineer | Implement frontend (Next.js map + form), backend API (Node/Express), DB schema |
+| **Handoff Spec Writer** | UX/Design Spec | Turn wireframes/designs into developer-ready specs; component tokens, states, edge cases |
+| **Design Critic** | UI/UX Reviewer | Review every screen before it ships; ranked, concrete fixes |
+| **Bug Fixer** | QA / Bug Triage | Reproduce bugs from issues or test failures, deliver smallest confirmed fix |
+| **Security Reviewer** | Security | Audit API endpoints, auth, location data handling; ranked risks + fixes |
+| **Change Reviewer** | Code Review | Review PRs before merge; catch logic bugs, trigger/consequence/fix format |
+| **PR Shepherd** | CI/CD / PR Health | Keep PRs moving to green; flag blockers; coordinate merges |
+| **Research Desk** | Research / SDG Alignment | Source water safety standards, SDG 6 targets, real pilot partner research |
+| **Personal Assistant** | Coordinator / PM | Assign tasks, track blockers, run standups, maintain progress |
+| **Slack Orchestrator** | Comms Hub | Route external messages, surface updates to the team |
+
+## Human Owner
+- **thesteven123 (Steven)** — Project owner, final approval on merges, outreach, and payments

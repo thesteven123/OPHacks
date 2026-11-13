@@ -1,50 +1,111 @@
-# TapCheck Project Plan
+# TapCheck — Project Plan
 
-## Phases
-| Phase | Output | Exit criteria | Owner |
-|---|---|---|---|
-| 0. Discovery (week 1) | Pilot community chosen, 5 resident interviews, list of water-issue categories used by the local authority | Pilot partner confirmed in writing | Personal assistant (logistics), Research Desk (sources) |
-| 1. Design (week 1–2) | Wireframes for report form, map, moderator queue; design spec with tokens and states | Design Critic review passed, spec signed off | Handoff Spec Writer, Design Critic |
-| 2. Build MVP (week 2–4) | F1–F7 implemented on a branch per feature | All acceptance criteria in MVP.md pass | Executive Coder (lead), Bug Fixer (on reported failures) |
-| 3. Review and hardening (week 4) | Security and change review of all PRs; privacy checks | No open high-severity findings | Security Reviewer, Change Reviewer, PR Shepherd |
-| 4. Pilot (week 5–8) | Live pilot with the partner community | Success measures in MVP.md reached or reasons documented | Personal assistant (coordination), Research Desk (weekly summary) |
+## Architecture Overview
 
-## Architecture (proposed, to confirm in Phase 2)
-- **Frontend:** mobile-responsive web app (report form, public map, moderator views). Map tiles from an open provider.
-- **Backend:** small REST API with one reports table, one status-history table, and one moderators table. Auth for moderators only.
-- **Storage:** relational database for reports; object storage for photos with metadata stripped on upload.
-- **Offline:** service worker queues the report locally and retries.
-- **Hosting:** decision deferred to Phase 2; keep it simple and free-tier if possible.
+```
+[Mobile Browser]
+    |
+    v
+[Next.js Frontend — Vercel]
+    ├── /report    → Report submission form (offline-capable)
+    ├── /map       → Public map (Leaflet, clustered markers)
+    ├── /dashboard → Status summary
+    └── /mod       → Moderator triage (auth-protected)
+         |
+         v
+[Express REST API — Railway]
+    ├── POST /api/reports      → Submit new report
+    ├── GET  /api/reports      → Fetch all (coarse location)
+    ├── GET  /api/reports/:id  → Moderator detail (precise location)
+    ├── PATCH /api/reports/:id → Update status (mod only)
+    └── GET  /api/export       → CSV / GeoJSON export
+         |
+         v
+[PostgreSQL — Railway]
+    └── Tables: reports, moderators
+         |
+         v
+[Cloudinary]  → Photo uploads
+```
 
-## Repo workflow
-- `main` is protected: changes come through pull requests.
-- Branch names: `feat/<short-name>`, `fix/<short-name>`, `docs/<short-name>`.
-- Every PR states which MVP feature (F1–F7) it covers and which acceptance criteria it meets.
-- PR Shepherd tracks open PRs; Change Reviewer and Security Reviewer review before merge.
+## Agile Iterations (3 × ~16h)
 
-## Milestones
-| Milestone | Date (relative) | Content |
-|---|---|---|
-| M0 | Day 0 | Repo and planning docs in place (this commit) |
-| M1 | End week 2 | Design signed off; API contract written |
-| M2 | End week 3 | F1, F2, F4 working end to end |
-| M3 | End week 4 | F3, F5, F6, F7 working; security review closed |
-| M4 | Week 5 | Pilot starts |
+### Iteration 1 — Foundation (Hours 0–16)
+**Goal:** Backend API running, DB schema live, basic form submitting data.
 
-## Decisions to make (open questions)
-1. Which pilot community and partner? (Personal assistant to propose options.)
-2. Which hosting and database? (Executive Coder to propose two options with cost.)
-3. Exact rate limit per device per day? (Security Reviewer to recommend.)
-4. Which languages for the pilot? (Research Desk to check the local population.)
+| Task | Owner | Done When |
+|------|-------|-----------|
+| DB schema (reports, moderators) | Executive Coder | Prisma migrate runs clean |
+| POST /api/reports endpoint | Executive Coder | Accepts JSON + photo URL, stores to DB |
+| GET /api/reports endpoint | Executive Coder | Returns coarse location array |
+| Report submission form (UI) | Executive Coder | Submits to API, shows success |
+| GPS auto-detect | Executive Coder | Coordinates appear pre-filled |
+| Cloudinary photo upload | Executive Coder | Photo URL stored in report row |
+| Deploy backend to Railway | Executive Coder | /api/reports responds in production |
+| Security audit: input validation, SQL injection | Security Reviewer | No unparameterized queries; validation on all fields |
+| Design spec for form | Handoff Spec Writer | Component list with states, error messages |
 
-## Risks
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Spam or false reports | Map loses trust | Moderation queue, rate limits, public view only shows verified or open reports with a note |
-| Location privacy | Residents harmed | Coarse public location, precise location moderator-only, no exports of precise location |
-| Users read reports as official tests | Health risk | Disclaimer on form, report page, and map |
-| Authority doesn't respond | No real change | Pilot partner agreed before build; track response time as a success measure |
-| Low adoption | Too few reports | Partner outreach, simple form, accessible in the local language |
+**Retro target:** Form → API → DB pipeline confirmed end-to-end.
 
-## Out of this plan
-Implementation details beyond the architecture above, hardware sensors, and any official water-quality claims.
+---
+
+### Iteration 2 — Core UX (Hours 16–32)
+**Goal:** Public map live, moderator triage working, offline queue functional.
+
+| Task | Owner | Done When |
+|------|-------|-----------|
+| Public map with clustered markers | Executive Coder | Reports from API appear color-coded |
+| Map filters (type, age) | Executive Coder | Filter controls update markers |
+| Marker tap → summary card | Executive Coder | Card shows type, date, thumbnail, status |
+| Moderator login (NextAuth) | Executive Coder | /mod redirects to login; session persists |
+| Triage table + actions | Executive Coder | Verify/Resolve/Remove updates status in DB |
+| Internal note field | Executive Coder | Note saved per report, mod-only |
+| Offline queue (localStorage) | Executive Coder | Report queued when offline, syncs on reconnect |
+| Design review: form + map | Design Critic | Top 3 fixes applied |
+| PR review: Iteration 1 code | Change Reviewer | No critical bugs merged |
+| Security: auth, session, location privacy | Security Reviewer | Precise GPS never in public API response |
+
+**Retro target:** Full public flow + mod triage confirmed in staging.
+
+---
+
+### Iteration 3 — Polish & Export (Hours 32–48)
+**Goal:** Export, dashboard, demo polish, Lighthouse ≥ 80.
+
+| Task | Owner | Done When |
+|------|-------|-----------|
+| CSV export endpoint | Executive Coder | Downloads valid CSV from /api/export |
+| GeoJSON export | Executive Coder | Valid GeoJSON, importable in QGIS |
+| Status dashboard page | Executive Coder | Shows open/resolved counts, last updated |
+| Disclaimer copy on form | Executive Coder | "Not a substitute for official water testing" visible |
+| Rate limiting (spam mitigation) | Executive Coder | >10 req/min from same IP returns 429 |
+| Lighthouse mobile audit | Executive Coder | Score ≥ 80 |
+| Final security sweep | Security Reviewer | No high-severity open findings |
+| Final PR review | Change Reviewer | All Iteration 3 PRs reviewed |
+| PR merge to main | PR Shepherd | Main branch green, all checks pass |
+| SDG alignment fact-check | Research Desk | SDG 6 target numbers verified against un.org |
+| Demo script | Personal Assistant | 5-step walkthrough written, timing rehearsed |
+
+**Retro target:** Demo-ready deploy on Vercel + Railway.
+
+---
+
+## Pilot Partner Research (Async — Research Desk)
+Run in parallel with Iteration 1. Identify 3–5 candidate pilot partner types (neighborhood association, school, community clinic, housing authority, local NGO) and what to ask each. No outreach without Steven's approval.
+
+## Risk Register
+
+| Risk | Mitigation |
+|------|-----------|
+| Spam / false reports | Rate limiting + moderation queue |
+| Privacy: precise GPS leaked | Coarse-only in public API; precise stored server-side |
+| Photo storage cost | Cloudinary free tier (25 GB); compress client-side |
+| DB overload at demo | Railway hobby plan + pagination on GET /reports |
+| Offline sync conflicts | Last-write-wins; timestamp-based dedup |
+
+## Definition of Done
+- All Iteration 3 tasks checked
+- No high-severity security findings open
+- Vercel + Railway deploys responding
+- 5 test reports visible on live map
+- Export downloads valid CSV

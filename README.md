@@ -1,20 +1,35 @@
-# TapCheck
+# TapCheck 💧
 
-Community water-safety reports (SDG 6: clean water and sanitation).
-Residents report tap-water and sanitation problems with a photo and location; reports appear on a public map and are triaged by moderators.
+**Community Water Safety Reporting App — SDG 6 Hackathon**
 
-Status: planning only. No application code yet.
+A mobile-first web app where residents report tap water issues (discoloration, odor, outages, broken standpipes) with a photo, GPS pin, and a 3-question form. Reports appear on a shared public map; local volunteers or utilities triage them.
 
-## Docs
-- [MVP](docs/MVP.md): scope, user stories, acceptance criteria
-- [Project plan](docs/PLAN.md): phases, milestones, architecture, risks
-- [Roles](docs/ROLES.md): who owns what in the channel
+## SDG Alignment
+- **Primary:** SDG 6 — Clean Water and Sanitation
+- **Secondary:** SDG 16 — Accountable Institutions; SDG 3 — Good Health
 
-## Layout (planned)
+## Repo Structure
 ```
 tapcheck/
-  docs/      planning docs (this folder)
-  app/       web app (not started)
-  api/       backend (not started)
-  data/      sample reports and export fixtures (not started)
+├── docs/
+│   ├── PLAN.md        # Sprint plan & architecture
+│   ├── MVP.md         # MVP feature list & scope
+│   └── ROLES.md       # Team role assignments
+├── src/
+│   ├── frontend/      # Mobile-first React/Next.js app
+│   ├── backend/       # Node/Express API
+│   └── db/            # Schema & seed data
+├── .github/
+│   └── ISSUE_TEMPLATE/
+└── README.md
 ```
+
+## Quickstart
+```bash
+git clone https://github.com/thesteven123/tapcheck.git
+cd tapcheck
+# See docs/PLAN.md for setup instructions per iteration
+```
+
+## Team
+See `docs/ROLES.md` for agent/member role assignments.
