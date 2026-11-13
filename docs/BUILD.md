@@ -50,10 +50,21 @@ app/mod.html        F4 moderation queue
 | F7 Disclaimer | On the form and map popups |
 
 ## Hosting options (answer to PLAN.md open question 2)
-1. **Single small VM or Fly.io/Render instance with SQLite on a volume.** Matches this code as is, lowest cost (free tier to a few $/month), one process to run. Weak point: one machine, so backups are manual.
-2. **Vercel/Netlify static frontend + managed Postgres (Supabase/Neon free tier) + object storage for photos.** Scales and handles photos better; needs the API ported to serverless functions and the SQL moved to Postgres.
+Prices checked on 2026-11-12 at fly.io/docs/about/pricing, supabase.com/pricing and vercel.com/pricing.
 
-Recommendation: option 1 for the hackathon and pilot, option 2 if the pilot grows past one community. Prices are from general knowledge; check current pricing pages before deciding.
+**A. Fly.io, one Machine + SQLite and photos on a volume**: about $4–8/month, often $0.
+- 1× `shared-cpu-1x` 512 MB: $3.69; 3 GB volume: $0.45; snapshots: free up to 10 GB; egress: $0.02/GB.
+- Fly waives personal-org bills under $5, so pilot scale is likely $0. A card is required; there's no free tier.
+- Pros: runs this draft as is; one process; cheapest. Cons: one machine (no failover); we build moderator auth and photo handling ourselves; daily snapshots are our only backup.
+
+**B. Vercel frontend/functions + Supabase (Postgres, Storage for photos, Auth for moderators)**: $0 for the hackathon, about $25–45/month for a pilot.
+- Free: Supabase 500 MB DB, 1 GB files, project pauses after 1 week idle; Vercel Hobby $0.
+- Pilot: Supabase Pro $25 (8 GB DB, 100 GB files, daily backups 7 days); Vercel Pro $20 if Hobby's terms don't fit.
+- Pros: managed backups, photo storage, and real moderator accounts; scales to many communities. Cons: port the API to serverless + Postgres; two vendors; the free Supabase tier pauses, so it's risky for a live pilot.
+
+Photos are small at pilot scale: 30 reports × ~300 KB ≈ 10 MB.
+
+Recommendation: A for the hackathon demo and first pilot; move to B when a second community or more than a few moderators join.
 
 ## Next build steps
 1. Photo upload with metadata stripping (F1).
