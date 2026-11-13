@@ -1,4 +1,5 @@
 import { publicFetch } from '@/lib/server';
+import OfflineDataNotice from '@/components/OfflineDataNotice';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ export default async function DashboardPage() {
   return (
     <main>
       <h1>Report status</h1>
+      <OfflineDataNotice />
       {kpis ? (
         <>
           <div className="kpis">{kpis.map(([label, n]) => <div key={label}><span>{n}</span>{label}</div>)}</div>

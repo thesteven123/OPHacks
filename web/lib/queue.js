@@ -53,16 +53,29 @@ export async function addToQueue(report) {
   return { photoDropped };
 }
 
+// The queue entry is deleted only for an acknowledgement that names the queued id: 201 (created) or 200 with
+// duplicate:true (an earlier retry landed). Any other reply, including 2xx with a mismatched or unreadable body, keeps
+// the report. Keep in sync with acknowledged() in public/sw.js.
+async function acknowledgement(res, id) {
+  if (res.status !== 201 && res.status !== 200) return null;
+  const body = await res.json().catch(() => null);
+  if (typeof body?.id !== 'string' || body.id.toLowerCase() !== id.toLowerCase()) return null;
+  if (res.status === 200 && body.duplicate !== true) return null;
+  return body;
+}
+
 let running = null;
 export function flushQueue() {
   running ??= (async () => {
-    let offline = 0, limited = 0, sent = 0, remaining;
+    let offline = 0, limited = 0, failed = 0, sent = 0, remaining;
     for (const { id, apiUrl, report } of await withStore('readonly', (s) => s.getAll())) {
       try {
         const res = await fetch(`${apiUrl}/api/reports`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(report) });
         if (res.status === 429) { limited++; continue; }
         if (res.status >= 500) { offline++; continue; }
-        remaining = (await res.json()).remaining;
+        const ack = await acknowledgement(res, id);
+        if (!ack) { failed++; continue; }
+        if (typeof ack.remaining === 'number') remaining = ack.remaining;
         sent++;
         await withStore('readwrite', (s) => s.delete(id));
       } catch {
@@ -70,7 +83,7 @@ export function flushQueue() {
       }
     }
     notify();
-    return { offline, limited, sent, remaining };
+    return { offline, limited, failed, sent, remaining };
   })().finally(() => { running = null; });
   return running;
 }

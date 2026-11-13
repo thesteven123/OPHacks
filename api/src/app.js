@@ -15,6 +15,9 @@ const GRID = 0.001;
 const DAY_MS = 864e5;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_LOGIN_FAILURES = 5;
+const MAX_LOGIN_TRACKED = 1000;
+const MAX_EMAIL_LENGTH = 254;
+const MAX_PASSWORD_LENGTH = 256;
 const PUBLIC_LIST_LIMIT = 1000;
 
 const coarse = (v) => Math.round(Math.round(v / GRID) * GRID * 1e6) / 1e6;
@@ -31,6 +34,7 @@ function createApp({
   salt = process.env.RATE_SALT || crypto.randomBytes(16).toString('hex'),
   dailyLimit = Number(process.env.DAILY_LIMIT || 5),
   perMinuteLimit = Number(process.env.PER_MINUTE_LIMIT || 10),
+  loginPerMinuteLimit = Number(process.env.LOGIN_PER_MINUTE_LIMIT || 30),
 } = {}) {
   const app = express();
   const loginFailures = new Map();
@@ -55,12 +59,25 @@ function createApp({
   const perMinute = rateLimit({ windowMs: 60_000, limit: perMinuteLimit, standardHeaders: 'draft-8', legacyHeaders: false, skip: isInternal,
     message: { error: 'too many requests, slow down' } });
 
+  // Not skipped for internal callers: every valid /api/auth/verify request is internal. The API sees the shared Next.js
+  // origin IP, so this is one deliberate cap for all moderator logins combined, not a per-user limit.
+  const loginPerMinute = rateLimit({ windowMs: 60_000, limit: loginPerMinuteLimit, standardHeaders: 'draft-8', legacyHeaders: false,
+    message: { error: 'too many login attempts, slow down' } });
+
+  const recentFailures = (email, now) => (loginFailures.get(email) || []).filter((t) => t > now - LOGIN_WINDOW_MS);
+  const recordLoginFailure = (email, recent, now) => {
+    for (const [key, times] of loginFailures) if (!times.some((t) => t > now - LOGIN_WINDOW_MS)) loginFailures.delete(key);
+    loginFailures.delete(email);
+    loginFailures.set(email, [...recent, now]);
+    while (loginFailures.size > MAX_LOGIN_TRACKED) loginFailures.delete(loginFailures.keys().next().value);
+  };
+
   app.get('/health', (req, res) => res.json({ ok: true }));
   app.options('/api/reports', pub);
 
   app.post('/api/reports', pub, perMinute, async (req, res) => {
     const b = req.body || {};
-    const lat = Number(b.lat), lng = Number(b.lng), severity = Number(b.severity);
+    const lat = b.lat, lng = b.lng, severity = Number(b.severity);
     const email = String(b.contact_email || '').trim();
     if (typeof b.id !== 'string' || !UUID.test(b.id)) return res.status(400).json({ error: 'id must be a UUID' });
     if (!ISSUE_TYPES.includes(b.issue_type)) return res.status(400).json({ error: 'invalid issue_type' });
@@ -68,7 +85,7 @@ function createApp({
     if (!DURATIONS.includes(b.duration)) return res.status(400).json({ error: 'invalid duration' });
     if (!USABLE.includes(b.water_usable)) return res.status(400).json({ error: 'invalid water_usable' });
     if (email && (email.length > 254 || !EMAIL.test(email))) return res.status(400).json({ error: 'invalid contact_email' });
-    if (!(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ error: 'invalid location' });
+    if (!(typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return res.status(400).json({ error: 'invalid location' });
     const jpeg = b.photo ? decodeJpegDataUrl(b.photo) : null;
     if (b.photo && !jpeg) return res.status(400).json({ error: 'photo must be a JPEG data URL' });
 
@@ -118,13 +135,17 @@ function createApp({
   });
 
   // Server-to-server only: the Next.js app calls these with INTERNAL_API_KEY after checking the moderator session.
-  app.post('/api/auth/verify', requireInternal, async (req, res) => {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const recent = (loginFailures.get(email) || []).filter((t) => t > Date.now() - LOGIN_WINDOW_MS);
+  app.post('/api/auth/verify', requireInternal, loginPerMinute, async (req, res) => {
+    const { email: rawEmail, password } = req.body || {};
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+    if (!email || email.length > MAX_EMAIL_LENGTH || !EMAIL.test(email)) return res.status(400).json({ error: 'invalid email' });
+    if (typeof password !== 'string' || password.length > MAX_PASSWORD_LENGTH) return res.status(400).json({ error: 'invalid password' });
+    const now = Date.now();
+    const recent = recentFailures(email, now);
     if (recent.length >= MAX_LOGIN_FAILURES) return res.status(429).json({ error: 'too many failed logins, try again later' });
-    const mod = email && (await prisma.moderator.findUnique({ where: { email } }));
-    if (!mod || !(await bcrypt.compare(String(req.body?.password || ''), mod.password_hash))) {
-      loginFailures.set(email, [...recent, Date.now()]);
+    const mod = await prisma.moderator.findUnique({ where: { email } });
+    if (!mod || !(await bcrypt.compare(password, mod.password_hash))) {
+      recordLoginFailure(email, recent, now);
       return res.status(401).json({ error: 'wrong email or password' });
     }
     loginFailures.delete(email);

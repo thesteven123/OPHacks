@@ -101,7 +101,8 @@ test('moderator login: bcrypt check, then lockout after 5 failures', async () =>
 
 test('rejects invalid input and enforces the daily limit with a remaining count', async () => {
   const base = await start();
-  for (const bad of [{ issue_type: 'fire' }, { lat: 200 }, { id: 'nope' }, { severity: 5 }, { duration: 'x' }, { water_usable: 'x' }, { contact_email: 'nope' }, { photo: 'data:image/png;base64,AAAA' }])
+  for (const bad of [{ issue_type: 'fire' }, { lat: 200 }, { id: 'nope' }, { severity: 5 }, { duration: 'x' }, { water_usable: 'x' }, { contact_email: 'nope' }, { photo: 'data:image/png;base64,AAAA' },
+    { lat: null }, { lng: null }, { lat: '' }, { lng: '' }, { lat: true }, { lng: false }, { lat: '37.87' }, { lat: [] }])
     assert.equal((await fetch(`${base}/api/reports`, json(report(bad)))).status, 400, JSON.stringify(bad));
   const results = [];
   for (let i = 0; i < 4; i++) {
@@ -168,4 +169,60 @@ test('CORS allows only the configured frontend origin', async () => {
   assert.equal(ok.headers.get('access-control-allow-origin'), 'https://tapcheck.example');
   const bad = await fetch(`${base}/api/reports`, { headers: { origin: 'https://evil.example' } });
   assert.equal(bad.headers.get('access-control-allow-origin'), null);
+});
+
+test('login rejects invalid email and password shapes with 400 before any database lookup', async () => {
+  const lookups = [];
+  const stub = { moderator: { findUnique: async (q) => (lookups.push(q), null) } };
+  const server = createApp({ prisma: stub, apiKey: KEY, loginPerMinuteLimit: 100 }).listen(0);
+  servers.push(server);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+  const login = (body) => internal(base, '/api/auth/verify', { method: 'POST', body: JSON.stringify(body) });
+  const long = `${'a'.repeat(250)}@example.org`;
+  const bad = [
+    {}, { email: MOD.email }, { password: 'x' }, { email: 5, password: 'x' }, { email: ['mod@example.org'], password: 'x' },
+    { email: 'not-an-email', password: 'x' }, { email: long, password: 'x' },
+    { email: MOD.email, password: 5 }, { email: MOD.email, password: null }, { email: MOD.email, password: 'p'.repeat(257) },
+  ];
+  for (const body of bad) assert.equal((await login(body)).status, 400, JSON.stringify(body).slice(0, 80));
+  assert.equal(lookups.length, 0);
+  assert.equal((await login({ email: MOD.email, password: 'p'.repeat(256) })).status, 401);
+  assert.equal(lookups.length, 1);
+});
+
+test('login does not trim passwords', async () => {
+  const base = await start();
+  const login = (password) => internal(base, '/api/auth/verify', { method: 'POST', body: JSON.stringify({ email: MOD.email, password }) });
+  assert.equal((await login(` ${MOD.password}`)).status, 401);
+  assert.equal((await login(MOD.password)).status, 200);
+});
+
+test('login per-IP rate limit applies to internal callers even with rotating valid emails', async () => {
+  const base = await start({ loginPerMinuteLimit: 2 });
+  const codes = [];
+  for (const email of ['a@example.org', 'b@example.org', 'c@example.org'])
+    codes.push((await internal(base, '/api/auth/verify', { method: 'POST', body: JSON.stringify({ email, password: 'x' }) })).status);
+  assert.deepEqual(codes, [401, 401, 429]);
+  assert.equal((await fetch(`${base}/api/auth/verify`, { ...json({ email: MOD.email, password: 'x' }), headers: { 'content-type': 'application/json', 'x-api-key': 'wrong' } })).status, 401);
+});
+
+test('login failure tracking forgets expired entries and evicts the oldest key past 1000', async (t) => {
+  const stub = { moderator: { findUnique: async () => null } };
+  const server = createApp({ prisma: stub, apiKey: KEY, loginPerMinuteLimit: 1e9 }).listen(0);
+  servers.push(server);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+  const fail = (email) => internal(base, '/api/auth/verify', { method: 'POST', body: JSON.stringify({ email, password: 'x' }) });
+  const realNow = Date.now;
+  t.after(() => { Date.now = realNow; });
+  const start0 = realNow();
+  for (let i = 0; i < 5; i++) assert.equal((await fail('old@example.org')).status, 401);
+  assert.equal((await fail('old@example.org')).status, 429);
+  Date.now = () => start0 + 16 * 60 * 1000;
+  assert.equal((await fail('old@example.org')).status, 401);
+  for (let i = 0; i < 4; i++) await fail('old@example.org');
+  assert.equal((await fail('old@example.org')).status, 429);
+  for (let i = 0; i < 1000; i++) await fail(`user${i}@example.org`);
+  assert.equal((await fail('old@example.org')).status, 401);
 });

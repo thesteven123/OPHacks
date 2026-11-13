@@ -65,7 +65,7 @@ Without Cloudinary credentials the API still accepts reports and drops their pho
 | GET | `/api/reports` | none | Non-rejected reports, newest 1000; coarse location; signed photo URL; no email, note or exact GPS |
 | GET | `/api/stats` | none | Counts by status + last update |
 | GET | `/api/export?format=csv\|geojson` | none | Same public fields as the map; CSV is formula-safe |
-| POST | `/api/auth/verify` | `x-api-key` | Used by NextAuth; bcrypt check; 5 failures per email per 15 min → 429 |
+| POST | `/api/auth/verify` | `x-api-key` | Used by NextAuth; bcrypt check; 400 for malformed email or password; 5 failures per email per 15 min → 429; 30 requests per IP per minute → 429 |
 | GET | `/api/mod/reports` | `x-api-key` | All reports with exact GPS, email, note, status history |
 | GET | `/api/reports/:id` | `x-api-key` | Moderator detail |
 | PATCH | `/api/reports/:id` | `x-api-key` | `{status, note}`; writes `status_history` |
@@ -88,6 +88,13 @@ Limits: 10 report submissions per IP per minute (PLAN.md) and 5 per device (hash
 - **Status UI:** an "Offline" pill in the header; `OfflineSyncBanner` (`aria-live="polite"`) shows the queue count, "Sending…", the result, and a "Send now" button; the map says "Viewing cached reports. Reconnect for updates."; moderator Save buttons are disabled offline.
 - **Service worker only runs in production builds** (`npm run build && npm start`), so `npm run dev` never serves stale files.
 - Map tiles are not cached: offline, markers show on a blank background.
+
+## Pilot hardening
+- **Offline queue acknowledgement:** the page and the service worker delete a queued report only after a 201 whose JSON `id` matches it, or a 200 with `duplicate: true` and a matching `id`. Every other reply (other 2xx, 4xx, malformed or mismatched JSON, network failure) keeps the original report and photo. 429 stays "limited", 5xx and network errors stay "offline", and other rejections are counted as `failed`; the form and `OfflineSyncBanner` then say the server did not accept the report and it remains saved on this device. Background Sync still rejects while anything is pending. If the first IndexedDB write fails, the form and photo stay as entered and an error asks the resident to free up storage.
+- **Moderator login:** `/api/auth/verify` checks the internal key, then a per-IP limiter (`LOGIN_PER_MINUTE_LIMIT`, default 30 per minute), then input shape (string email up to 254 characters in a valid format, string password up to 256 characters, never trimmed) before any database lookup. The API sees the shared Next.js server IP, so the 30 per minute is one deliberate cap for all moderator logins combined during the pilot. The 5 failures per email per 15 minutes policy is unchanged; expired entries are pruned and the map keeps at most 1000 emails, evicting the oldest.
+- **Report location:** `lat` and `lng` must be finite JSON numbers in range; `null`, empty strings, booleans and numeric strings are rejected instead of being coerced to 0.
+- **Dashboard:** offline, it keeps the cached server-rendered stats and adds "Viewing cached status. Reconnect for updates."
+- **Tests:** `cd web && npm test` runs the queue tests against the real `lib/queue.js` and `public/sw.js` flush code with an in-memory IndexedDB stub; the API suite covers the login and location cases.
 
 Deviations from the docs: Next.js **16** instead of the 14 named in MVP.md, because 14.x is out of support and `npm audit` lists unpatched critical advisories (including remote code execution) for it. JavaScript, not TypeScript, to match the draft.
 
